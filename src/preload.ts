@@ -19,3 +19,9 @@ contextBridge.exposeInMainWorld("terminal", {
     ipcRenderer.send("terminal-ready");
   },
 });
+
+contextBridge.exposeInMainWorld("chat", {
+  sendMessage: (message: string): Promise<string> => {
+    return ipcRenderer.invoke("chat-message", message);
+  },
+});

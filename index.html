@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8" />
+    <title>Terminal.AI</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@4.19.0/css/xterm.css" />
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Courier New', monospace;
+            background-color: #1e1e1e;
+            color: #fff;
+            overflow: hidden;
+        }
+
+        #header {
+            background-color: #2d2d2d;
+            padding: 10px 20px;
+            border-bottom: 1px solid #3e3e3e;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        #header h1 {
+            font-size: 16px;
+            font-weight: 600;
+            color: #fff;
+        }
+
+        #platform-info {
+            font-size: 12px;
+            color: #888;
+        }
+
+        #terminal-container {
+            width: 100%;
+            height: calc(100vh - 50px);
+            padding: 10px;
+        }
+
+        #terminal {
+            width: 100%;
+            height: 100%;
+        }
+        
+        #terminal .xterm {
+            height: 100% !important;
+        }
+        
+        #terminal .xterm-screen {
+            height: 100% !important;
+        }
+        
+        /* Ensure cursor is visible */
+        #terminal .xterm-cursor-layer {
+            z-index: 10 !important;
+            pointer-events: none;
+            position: relative !important;
+        }
+        
+        #terminal .xterm-cursor {
+            display: block !important;
+            visibility: visible !important;
+            background-color: #ffffff !important;
+            width: 8px !important;
+            height: 16px !important;
+            position: relative !important;
+            left: 0 !important;
+            top: 0 !important;
+        }
+        
+        /* Ensure cursor is positioned correctly in the terminal */
+        #terminal .xterm-screen .xterm-cursor-layer {
+            position: absolute !important;
+        }
+        
+        /* Blinking cursor animation */
+        @keyframes blink {
+            0%, 49% { 
+                opacity: 1; 
+                background-color: #ffffff;
+            }
+            50%, 100% { 
+                opacity: 0; 
+                background-color: #ffffff;
+            }
+        }
+        
+        #terminal .xterm-cursor-blink {
+            animation: blink 1s infinite !important;
+            background-color: #ffffff !important;
+        }
+        
+        /* Ensure all cursor elements blink */
+        #terminal .xterm-cursor-layer .xterm-cursor.xterm-cursor-blink {
+            animation: blink 1s infinite !important;
+            background-color: #ffffff !important;
+        }
+        
+        /* Ensure cursor is always visible - override any hiding */
+        #terminal .xterm-cursor-layer .xterm-cursor {
+            background-color: #ffffff !important;
+            color: #1e1e1e !important;
+            display: block !important;
+            visibility: visible !important;
+        }
+        
+        /* Make sure terminal textarea is focused */
+        #terminal .xterm textarea {
+            opacity: 0;
+            position: absolute;
+        }
+        
+        /* Force cursor visibility on the screen */
+        #terminal .xterm-screen .xterm-cursor {
+            display: block !important;
+            visibility: visible !important;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="header">
+        <h1>Terminal.AI</h1>
+        <div id="platform-info">Platform: <span id="platform"></span></div>
+    </div>
+    <div id="terminal-container">
+        <div id="terminal"></div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/xterm@4.19.0/lib/xterm.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.5.0/lib/xterm-addon-fit.js"></script>
+    <script>
+        // Debug: Check what's available after loading scripts
+        console.log('After loading scripts:', {
+            Terminal: typeof Terminal,
+            FitAddon: typeof FitAddon,
+            windowFitAddon: typeof window.FitAddon,
+            xterm: typeof xterm
+        });
+    </script>
+    <script>
+        // Wait for everything to be ready
+        function initTerminal() {
+            // Check if Terminal is loaded - xterm v4 exposes it as Terminal
+            if (typeof Terminal === 'undefined') {
+                console.error('xterm.js not loaded yet, retrying...', {
+                    Terminal: typeof Terminal
+                });
+                setTimeout(initTerminal, 100);
+                return;
+            }
+            
+            // Check FitAddon - try multiple ways it might be exposed
+            let FitAddonClass = null;
+            
+            // Try different ways FitAddon might be exposed
+            const fitAddonCandidates = [
+                FitAddon,
+                window.FitAddon,
+                (typeof xterm !== 'undefined' && xterm.FitAddon),
+                (typeof Terminal !== 'undefined' && Terminal.FitAddon)
+            ];
+            
+            for (let i = 0; i < fitAddonCandidates.length; i++) {
+                const candidate = fitAddonCandidates[i];
+                if (candidate && typeof candidate === 'function') {
+                    FitAddonClass = candidate;
+                    console.log('Found FitAddon constructor at index', i);
+                    break;
+                }
+            }
+            
+            if (!FitAddonClass) {
+                console.warn('FitAddon not available, continuing without auto-fit');
+                console.log('Available globals:', {
+                    FitAddon: typeof FitAddon,
+                    windowFitAddon: typeof window.FitAddon,
+                    xterm: typeof xterm,
+                    Terminal: typeof Terminal
+                });
+            }
+            
+            const TerminalClass = Terminal;
+
+            // Check if terminal API is available
+            if (!window.terminal) {
+                console.error('Terminal API not available! Check preload script.');
+                document.getElementById('terminal').innerHTML = '<p style="color: red;">Error: Terminal API not available. Please restart the app.</p>';
+                return;
+            }
+
+            // Initialize platform info
+            if (window.platform) {
+                document.getElementById("platform").innerHTML = window.platform.name;
+            }
+
+            // Create terminal instance
+            const terminal = new TerminalClass({
+                cursorBlink: true,
+                cursorStyle: 'block', // Use block cursor for better visibility
+                disableStdin: false, // Ensure input is enabled
+                fontSize: 14,
+                fontFamily: '"Cascadia Code", Menlo, Monaco, "Courier New", monospace',
+                theme: {
+                    background: '#1e1e1e',
+                    foreground: '#d4d4d4',
+                    cursor: '#ffffff', // White cursor
+                    cursorAccent: '#1e1e1e',
+                    black: '#000000',
+                    red: '#cd3131',
+                    green: '#0dbc79',
+                    yellow: '#e5e510',
+                    blue: '#2472c8',
+                    magenta: '#bc3fbc',
+                    cyan: '#11a8cd',
+                    white: '#e5e5e5',
+                    brightBlack: '#666666',
+                    brightRed: '#f14c4c',
+                    brightGreen: '#23d18b',
+                    brightYellow: '#f5f543',
+                    brightBlue: '#3b8eea',
+                    brightMagenta: '#d670d6',
+                    brightCyan: '#29b8db',
+                    brightWhite: '#e5e5e5'
+                }
+            });
+
+            // Add fit addon if available
+            let fitAddon = null;
+            if (FitAddonClass) {
+                try {
+                    fitAddon = new FitAddonClass();
+                    terminal.loadAddon(fitAddon);
+                } catch (e) {
+                    console.error('Failed to create FitAddon:', e);
+                    fitAddon = null;
+                }
+            }
+
+            // Open terminal in the container
+            const terminalElement = document.getElementById('terminal');
+            terminal.open(terminalElement);
+            
+            // Wait a bit for terminal to fully initialize
+            setTimeout(() => {
+                if (fitAddon) {
+                    fitAddon.fit();
+                } else {
+                    // Manual resize if fit addon not available
+                    terminal.resize(Math.floor((window.innerWidth - 40) / 8), Math.floor((window.innerHeight - 100) / 16));
+                }
+                
+                // Focus the terminal FIRST before writing
+                terminal.focus();
+                terminalElement.focus();
+                
+                // Force cursor to be visible using ANSI escape codes
+                terminal.write('\x1b[?25h'); // DECSET - Show cursor
+                
+                // Ensure cursor is positioned correctly
+                terminal.write('\x1b[0m'); // Reset formatting
+                
+                // Force cursor to appear by manipulating DOM directly
+                setTimeout(() => {
+                    // Find cursor element and force it visible
+                    const cursorElements = terminalElement.querySelectorAll('.xterm-cursor, [class*="cursor"]');
+                    console.log('Found cursor elements:', cursorElements.length);
+                    
+                    cursorElements.forEach(function(cursor) {
+                        if (cursor) {
+                            cursor.style.display = 'block';
+                            cursor.style.visibility = 'visible';
+                            cursor.style.backgroundColor = '#ffffff';
+                            cursor.style.width = '8px';
+                            cursor.style.height = '16px';
+                            cursor.style.position = 'relative';
+                            // Add blinking class for animation
+                            cursor.classList.add('xterm-cursor-blink');
+                            
+                            // Debug: Log cursor position
+                            const rect = cursor.getBoundingClientRect();
+                            console.log('Cursor positioned at:', {
+                                left: rect.left,
+                                top: rect.top,
+                                width: rect.width,
+                                height: rect.height
+                            });
+                        }
+                    });
+                    
+                    // Force refresh
+                    terminal.refresh(0, terminal.rows - 1);
+                    
+                    // Ensure cursor is positioned at the end of current line
+                    // Get current cursor position and ensure it's visible
+                    terminal.write('\x1b[?25h'); // Show cursor
+                    terminal.refresh(0, terminal.rows - 1);
+                    
+                    // Debug: Log cursor position info
+                    console.log('Cursor position check:', {
+                        cols: terminal.cols,
+                        rows: terminal.rows,
+                        cursorElements: cursorElements.length
+                    });
+                }, 150);
+                
+                console.log('Terminal initialized:', {
+                    cursorBlink: terminal.options && terminal.options.cursorBlink,
+                    cursorStyle: terminal.options && terminal.options.cursorStyle,
+                    cols: terminal.cols,
+                    rows: terminal.rows
+                });
+            }, 250);
+
+            // Signal that terminal is ready
+            window.terminal.ready();
+            
+            // Send resize event to backend
+            window.terminal.resize(terminal.cols, terminal.rows);
+
+            // Handle terminal input - send to backend
+            terminal.onData((data) => {
+                console.log('Terminal input:', JSON.stringify(data)); // Debug
+                window.terminal.sendInput(data);
+            });
+
+            // Receive terminal output from backend
+            window.terminal.onData((data) => {
+                console.log('Terminal output:', JSON.stringify(data.substring(0, 50))); // Debug first 50 chars
+                terminal.write(data);
+                
+                // Ensure cursor is visible and positioned correctly after output
+                setTimeout(function() {
+                    terminal.write('\x1b[?25h'); // Show cursor
+                    // Force cursor to end of line if needed
+                    const cursorElements = terminalElement.querySelectorAll('.xterm-cursor');
+                    cursorElements.forEach(function(cursor) {
+                        if (cursor) {
+                            cursor.style.display = 'block';
+                            cursor.style.visibility = 'visible';
+                            cursor.style.backgroundColor = '#ffffff';
+                            cursor.classList.add('xterm-cursor-blink');
+                        }
+                    });
+                }, 10);
+            });
+
+            // Handle window resize
+            window.addEventListener('resize', () => {
+                if (fitAddon) {
+                    fitAddon.fit();
+                } else {
+                    // Manual resize if fit addon not available
+                    terminal.resize(Math.floor((window.innerWidth - 40) / 8), Math.floor((window.innerHeight - 100) / 16));
+                }
+                window.terminal.resize(terminal.cols, terminal.rows);
+            });
+
+            // Ensure terminal stays focused when clicking on it
+            terminalElement.addEventListener('click', () => {
+                terminal.focus();
+            });
+            
+            // Also handle focus on the terminal element itself
+            terminalElement.setAttribute('tabindex', '0');
+            terminalElement.addEventListener('focus', () => {
+                terminal.focus();
+            });
+
+            // Initial welcome message
+            terminal.writeln('\x1b[1;32mWelcome to Terminal.AI\x1b[0m');
+            terminal.writeln('\x1b[0;33mWaiting for shell to initialize...\x1b[0m');
+            
+            // Force cursor to be visible immediately
+            terminal.write('\x1b[?25h'); // Show cursor (DECSET)
+            
+            // Debug: Check terminal state
+            console.log('Terminal state after opening:', {
+                cols: terminal.cols,
+                rows: terminal.rows,
+                options: terminal.options
+            });
+            
+            // Debug: Check if terminal API is available
+            console.log('Terminal initialized:', {
+                cols: terminal.cols,
+                rows: terminal.rows,
+                hasTerminalAPI: typeof window.terminal !== 'undefined',
+                terminalElement: terminalElement !== null
+            });
+            
+            // Test if terminal can write
+            setTimeout(() => {
+                console.log('Testing terminal write...');
+                terminal.write('\x1b[0m'); // Reset colors
+            }, 500);
+        }
+
+        // Start initialization when DOM is ready
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initTerminal);
+        } else {
+            initTerminal();
+        }
+    </script>
+</body>
+
+</html>

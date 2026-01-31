@@ -8,7 +8,9 @@
     "build": "tsc",
     "dev": "nodemon --watch src --exec \"npm run start\"",
     "rebuild": "electron-rebuild -f -w node-pty",
-    "postinstall": "electron-rebuild -f -w node-pty"
+    "postinstall": "electron-rebuild -f -w node-pty",
+    "dist": "npm run build && electron-builder",
+    "dist:pkg": "npm run build && electron-builder --mac pkg"
   },
   "keywords": [],
   "author": "",
@@ -17,6 +19,7 @@
     "@types/electron": "^1.6.12",
     "@types/node": "^25.0.3",
     "electron": "^39.2.7",
+    "electron-builder": "^26.4.0",
     "electron-rebuild": "^3.2.9",
     "nodemon": "^3.1.11",
     "ts-node": "^10.9.2",
@@ -28,5 +31,32 @@
     "dotenv": "^17.2.3",
     "node-pty": "^1.1.0",
     "xterm": "^5.3.0"
+  },
+  "build": {
+    "appId": "com.terminalai.app",
+    "productName": "Terminal.AI",
+    "directories": {
+      "output": "release"
+    },
+    "mac": {
+      "category": "public.app-category.developer-tools",
+      "target": [
+        {
+          "target": "pkg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ]
+    },
+    "files": [
+      "dist/**/*",
+      "index.html",
+      "public/**/*",
+      "package.json",
+      "node_modules/**/*"
+    ],
+    "extraResources": []
   }
 }
